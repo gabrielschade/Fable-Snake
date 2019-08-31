@@ -15,10 +15,9 @@ module SnakeGame =
     }
 
     type Snake = {
-        Trail : Position list
-        Tail : int
         Direction : Direction
-        Head : Position
+        Length : int
+        Trail : Position list
     }
 
     type Game = {
@@ -30,21 +29,27 @@ module SnakeGame =
 
     type GameState =
         | Alive of Snake
-        | NewScore of Snake
+        | Score of Snake
         | Dead
 
     let defaultHead = { X = 10 ; Y = 10 }
     let defaultGridSize = 20
+    let getHead snake = 
+        snake.Trail.[snake.Trail.Length - 1]
 
     let getApple() =
         let randomizer = Random()
         { 
-            X = randomizer.Next(0, 20)
-            Y = randomizer.Next(0, 20)
+            X = randomizer.Next(0, defaultGridSize)
+            Y = randomizer.Next(0, defaultGridSize)
         }
 
+    let checkColisionBetween positionA positionB =
+        positionA.X = positionB.X 
+        && positionA.Y = positionB.Y
+
     let checkOutOfBounds newX newY =
-        match (newX, newY ) with
+        match (newX, newY) with
         | (x,y) when x < 0 -> defaultGridSize-1, y
         | (x,y) when y < 0 -> x, defaultGridSize-1
         | (x,y) when x > defaultGridSize-1 -> 0, y
@@ -54,41 +59,50 @@ module SnakeGame =
     let getNextPosition snake =
         let (changeX, changeY) = 
             match snake.Direction with
-            | Direction.Right -> (1, 0)
-            | Direction.Left -> (-1,0)
-            | Direction.Up -> (0, -1)
-            | Direction.Down -> (0, 1) 
+            | Direction.Right -> (1,  0)
+            | Direction.Left ->  (-1, 0)
+            | Direction.Up ->    (0, -1)
+            | Direction.Down ->  (0,  1) 
 
-        let (newX, newY) = 
-            checkOutOfBounds (snake.Head.X + changeX) (snake.Head.Y + changeY)
+        let head = getHead snake
+        let (newX, newY) = checkOutOfBounds (head.X + changeX) (head.Y + changeY)
 
-        { snake with Head = { X = newX ; Y = newY }}
+        { X = newX ; Y = newY }
 
-    let move snake =
-        let skipSize = Math.Max(0, snake.Trail.Length + 1 - snake.Tail)
-        let trail = 
-            snake.Trail 
-            @ [snake.Head]
-            |> List.skip skipSize
-        { snake with Trail = trail }
+    let move snake toPosition =
+        let skipSize = Math.Max(0, snake.Trail.Length + 1 - snake.Length)
+        { snake with 
+            Trail = snake.Trail @ [toPosition]
+                    |> List.skip skipSize    
+        }
 
     let checkColisions apple snake  =
         let rec checkBodyColision head trailPositions =
             match trailPositions with
-            | current :: [] -> Alive snake
-            | current :: tail when head.X = current.X && head.Y = current.Y -> Dead
-            | current :: tail -> checkBodyColision head tail
             | [] -> Alive snake
+            | current :: [] -> Alive snake
+            | current :: tail when (checkColisionBetween head current) -> Dead
+            | current :: tail -> checkBodyColision head tail
 
-        let head = snake.Head
-        if head.X = apple.X && head.Y = apple.Y
-            then NewScore snake
-            else checkBodyColision snake.Head snake.Trail
+        let head = getHead snake
+        if checkColisionBetween head apple
+            then Score snake
+            else checkBodyColision head snake.Trail
+
+    let continueGame game direction =
+        {game with Snake = {game.Snake with Direction = direction}}
+
+    let score game direction =
+        {game with 
+                Snake = {game.Snake with Direction = direction ; Length = game.Snake.Length + 1}
+                Score = game.Score + 1
+                Apple = getApple()
+        }
 
     let run game =
         game.Snake
         |> getNextPosition
-        |> move
+        |> move game.Snake
         |> checkColisions game.Apple
 
 
@@ -103,30 +117,45 @@ let document = Browser.Dom.document
 let mutable myCanvas : Browser.Types.HTMLCanvasElement = 
     unbox window.document.getElementById "myCanvas"
 
-let mutable direction = Direction.Right
 let context = myCanvas.getContext_2d()
+
+let defaultTileSize = myCanvas.width / (defaultGridSize |> float)
+let mutable direction = Direction.Right
+let defaultGameSettings = {
+    Apple = getApple()
+    Score = 0
+    GridSize = defaultGridSize
+    Snake = {
+        Trail = [ defaultHead ]
+        Direction = Direction.Right
+        Length = 5
+    }
+}
+
+let isValidChange fromDirection toDirection =
+    fromDirection = Direction.Right && toDirection <> Direction.Left
+    || fromDirection = Direction.Left && toDirection <> Direction.Right
+    || fromDirection = Direction.Up && toDirection <> Direction.Down
+    || fromDirection = Direction.Down && toDirection <> Direction.Up
+
 let commandPressed (event:KeyboardEvent)= 
-    direction <- 
+    let newDirection = 
         match event.keyCode with
         | 37.0 -> Direction.Left
         | 38.0 -> Direction.Up
         | 39.0 -> Direction.Right
         | 40.0 -> Direction.Down
         | _ -> direction
-    ()
-document.addEventListener("keydown", fun event -> commandPressed(event :?> _))
 
-let defaultGameSettings = {
-    Apple = getApple()
-    Score = 0
-    GridSize = defaultGridSize
-    Snake = {
-        Head = defaultHead
-        Trail = [ defaultHead ]
-        Direction = Direction.Right
-        Tail = 5
-    }
-}
+    if isValidChange direction newDirection
+        then direction <- newDirection
+    ()
+
+
+let getCanvasPosition position =
+    position
+    |> float
+    |> (*) defaultTileSize
 
 let printCanvas game = 
     context.fillStyle <- !^ "black"
@@ -134,14 +163,14 @@ let printCanvas game =
 
     context.fillStyle <- !^ "lime"
     for position in game.Snake.Trail do
-        context.fillRect (  position.X * game.GridSize |> float, 
-                            position.Y * game.GridSize |> float, 
-                            18., 18.)
+        context.fillRect (  position.X |> getCanvasPosition, 
+                            position.Y |> getCanvasPosition, 
+                            defaultTileSize - 2., defaultTileSize - 2.)
 
     context.fillStyle <- !^ "red"
-    context.fillRect (  game.Apple.X * game.GridSize |> float, 
-                        game.Apple.Y * game.GridSize |> float, 
-                        18., 18.)
+    context.fillRect (  game.Apple.X |> getCanvasPosition, 
+                        game.Apple.Y |> getCanvasPosition, 
+                        defaultTileSize - 2., defaultTileSize - 2.)
 
 let resetGame score =
     window.alert(sprintf "Score: %i" score) 
@@ -153,16 +182,14 @@ let rec snakeGame game =
     let state = run game
     let updatedGame = 
         match state with
-        | Alive snake -> {game with Snake = {snake with Direction = direction}}
-        | NewScore snake -> {game with 
-                                Snake = {snake with Direction = direction ; Tail = snake.Tail + 1}
-                                Score = game.Score + 1
-                                Apple = getApple()
-                            }
         | Dead -> resetGame game.Score
+        | Alive snake -> continueGame game direction
+        | Score snake -> score game direction
 
-    window.setTimeout( (fun args -> snakeGame updatedGame), 1000/15) |> ignore
-
+    window.setTimeout( (fun args -> snakeGame updatedGame), 1000/15) 
+    |> ignore
+    
+document.addEventListener("keydown", fun event -> commandPressed(event :?> _))
 snakeGame defaultGameSettings |> ignore
 
 
