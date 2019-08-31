@@ -1,6 +1,6 @@
-# Fable Browser App
+# Fable Snake Game
 
-This is a simple Fable app which draws a grid into a canvas element. 
+This is a simple Fable app based on the Sample Fable Browser App. 
 
 ## Requirements
 
