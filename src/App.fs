@@ -89,12 +89,12 @@ module SnakeGame =
             then Score snake
             else checkBodyColision head snake.Trail
 
-    let continueGame game direction =
-        {game with Snake = {game.Snake with Direction = direction}}
+    let continueGame game snake direction =
+        {game with Snake = {snake with Direction = direction}}
 
-    let score game direction =
+    let score game snake direction =
         {game with 
-                Snake = {game.Snake with Direction = direction ; Length = game.Snake.Length + 1}
+                Snake = {snake with Direction = direction ; Length = snake.Length + 1}
                 Score = game.Score + 1
                 Apple = getApple()
         }
@@ -182,12 +182,11 @@ let rec snakeGame game =
     let state = run game
     let updatedGame = 
         match state with
+        | Alive snake -> continueGame game snake direction
+        | Score snake -> score game snake direction
         | Dead -> resetGame game.Score
-        | Alive snake -> continueGame game direction
-        | Score snake -> score game direction
-
-    window.setTimeout( (fun args -> snakeGame updatedGame), 1000/15) 
-    |> ignore
+    
+    window.setTimeout( (fun args -> snakeGame updatedGame), 1000/15) |> ignore
     
 document.addEventListener("keydown", fun event -> commandPressed(event :?> _))
 snakeGame defaultGameSettings |> ignore
